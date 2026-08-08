@@ -639,11 +639,11 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
           text: `Memproses Laporan ${i + 1} dari ${itemsToExport.length}...`,
         });
 
-        // 1. Mount current item in DOM at top:0, left:0 for valid html2canvas bounding box
+        // 1. Mount current item in DOM at off-screen container for valid html2canvas bounding box
         setExportingKegiatanItem(kegItem);
 
-        // 2. Wait 200ms for React to render DOM and update layout
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        // 2. Wait for React DOM mount & images to load
+        await new Promise((resolve) => setTimeout(resolve, 250));
 
         const element = document.getElementById("active-single-export-paper");
         if (!element) {
@@ -651,6 +651,22 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
           setExportingKegiatanItem(null);
           await new Promise((resolve) => setTimeout(resolve, 50));
           continue;
+        }
+
+        // Wait for all images inside paper element to finish loading before html2canvas capture
+        const imgEls = Array.from(element.querySelectorAll("img"));
+        if (imgEls.length > 0) {
+          await Promise.all(
+            imgEls.map((img) => {
+              if (img.complete) return Promise.resolve();
+              return new Promise<void>((resolve) => {
+                const done = () => resolve();
+                img.addEventListener("load", done, { once: true });
+                img.addEventListener("error", done, { once: true });
+                setTimeout(done, 1500);
+              });
+            })
+          );
         }
 
         const parentRb = rencanaBulananList.find((rb) => rb.id === kegItem.rencana_bulanan_id);
@@ -704,10 +720,12 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
           html2canvas: {
             scale: 2,
             useCORS: true,
-            allowTaint: true,
+            allowTaint: false,
             logging: false,
             backgroundColor: "#ffffff",
             windowWidth: 794,
+            scrollX: 0,
+            scrollY: 0,
             onclone: (clonedDoc: Document) => {
               clonedDoc.documentElement.classList.remove("dark");
               clonedDoc.body.classList.remove("dark");
@@ -716,19 +734,22 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
 
               const targetEl = clonedDoc.getElementById("active-single-export-paper");
               if (targetEl) {
-                // Isolate targetEl directly in clonedDoc body to remove off-screen parent offsets (-9999px)
-                clonedDoc.body.innerHTML = "";
-                clonedDoc.body.appendChild(targetEl);
-
                 targetEl.style.display = "block";
                 targetEl.style.visibility = "visible";
                 targetEl.style.opacity = "1";
-                targetEl.style.position = "relative";
-                targetEl.style.left = "0";
-                targetEl.style.top = "0";
-                targetEl.style.margin = "0 auto";
                 targetEl.style.backgroundColor = "#ffffff";
                 targetEl.style.color = "#0f172a";
+
+                const wrapper = clonedDoc.getElementById("active-export-wrapper-container") || targetEl.parentElement;
+                if (wrapper) {
+                  wrapper.style.position = "static";
+                  wrapper.style.display = "block";
+                  wrapper.style.visibility = "visible";
+                  wrapper.style.opacity = "1";
+                  wrapper.style.top = "0";
+                  wrapper.style.left = "0";
+                  wrapper.style.margin = "0 auto";
+                }
               }
 
               const images = Array.from(clonedDoc.querySelectorAll("img"));
@@ -741,13 +762,19 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
                 };
               });
 
+              // Clean oklch colors from style tags & inline styles to prevent html2canvas color parsing crashes
               const styleTags = Array.from(clonedDoc.querySelectorAll("style"));
               styleTags.forEach((styleTag) => {
                 if (styleTag.textContent && styleTag.textContent.includes("oklch")) {
-                  let css = styleTag.textContent;
-                  css = css.replace(/(--tw-[a-z0-9-]*:\s*)[^;]*oklch\([^)]+\)/gi, "$1rgba(0,0,0,0)");
-                  css = css.replace(/oklch\(([^)]+)\)/gi, "rgba(15, 23, 42, 0.8)");
-                  styleTag.textContent = css;
+                  styleTag.textContent = styleTag.textContent.replace(/oklch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
+                }
+              });
+
+              const allEls = Array.from(clonedDoc.querySelectorAll("*"));
+              allEls.forEach((el) => {
+                const htmlEl = el as HTMLElement;
+                if (htmlEl.style && htmlEl.style.cssText && htmlEl.style.cssText.includes("oklch")) {
+                  htmlEl.style.cssText = htmlEl.style.cssText.replace(/oklch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
                 }
               });
 
@@ -768,9 +795,11 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
         };
 
         try {
-          const pdfBlob: Blob = await html2pdf().set(opt).from(element).output("blob");
-          if (pdfBlob && pdfBlob.size > 0) {
-            zip.file(fileName, pdfBlob);
+          const worker = html2pdf().set(opt).from(element);
+          const pdfBlob: Blob = await worker.outputPdf("blob");
+          if (pdfBlob && pdfBlob.size > 200) {
+            const pdfBuffer = await pdfBlob.arrayBuffer();
+            zip.file(fileName, pdfBuffer);
           } else {
             console.warn(`PDF output is empty for ${fileName}`);
           }
@@ -781,9 +810,11 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
               ...opt,
               html2canvas: { ...opt.html2canvas, scale: 1 },
             };
-            const pdfBlob: Blob = await html2pdf().set(fallbackOpt).from(element).output("blob");
-            if (pdfBlob && pdfBlob.size > 0) {
-              zip.file(fileName, pdfBlob);
+            const worker = html2pdf().set(fallbackOpt).from(element);
+            const pdfBlob: Blob = await worker.outputPdf("blob");
+            if (pdfBlob && pdfBlob.size > 200) {
+              const pdfBuffer = await pdfBlob.arrayBuffer();
+              zip.file(fileName, pdfBuffer);
             }
           } catch (fallbackErr) {
             console.error(`Fallback PDF gagal untuk ${fileName}:`, fallbackErr);
@@ -2062,13 +2093,15 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
 
         return (
           <div
+            id="active-export-wrapper-container"
             style={{
               position: "fixed",
-              top: 0,
-              left: 0,
+              top: "-10000px",
+              left: "-10000px",
               width: "210mm",
-              opacity: 0.01,
-              zIndex: -9999,
+              opacity: 1,
+              visibility: "visible",
+              zIndex: -1,
               backgroundColor: "#ffffff",
               color: "#0f172a",
               pointerEvents: "none",
