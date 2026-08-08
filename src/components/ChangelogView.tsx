@@ -41,9 +41,40 @@ export interface ReleaseVersion {
 
 export const APP_VERSIONS: ReleaseVersion[] = [
   {
-    version: "v2.6.1",
+    version: "v2.6.2",
     date: "7 Agustus 2026",
     badge: "LATEST",
+    title: "Perbaikan Ekspor PDF ZIP, Restriksi Menu Database & Pembaharuan Versi Otomatis",
+    description:
+      "Pembaruan versi 2.6.2 dengan perbaikan mekanisme ekspor PDF ke ZIP tanpa merusak kerapian tata letak dokumen, pembatasan visibilitas menu Spreadsheet Database hanya untuk Admin, serta sistem auto-increment versi aplikasi pada setiap pembaruan.",
+    highlights: [
+      {
+        category: "FIX",
+        title: "Peningkatan Keandalan Ekspor PDF ZIP",
+        description:
+          "Penyempurnaan isolasi DOM saat generasi PDF massal sehingga file PDF berhasil diproses dan dikompres ke dalam ZIP secara konsisten di semua lingkungan hosting.",
+        icon: <Zap className="w-4 h-4 text-emerald-500" />,
+      },
+      {
+        category: "SECURITY",
+        title: "Privasi Menu Spreadsheet Database Khusus Admin",
+        description:
+          "Sesuai permintaan keamanan, menu Inspektur Database Google Spreadsheet dan indikator terkoneksi kini disembunyikan dari antarmuka User/Petugas biasa.",
+        icon: <ShieldCheck className="w-4 h-4 text-blue-500" />,
+      },
+      {
+        category: "ENHANCEMENT",
+        title: "Penyesuaian Versi Sistem Otomatis",
+        description:
+          "Setiap kali dilakukan pembaruan atau revisi sistem, versi aplikasi secara otomatis diperbarui di seluruh modul, header, sidebar, dan lisensi.",
+        icon: <Sparkles className="w-4 h-4 text-amber-500" />,
+      },
+    ],
+  },
+  {
+    version: "v2.6.1",
+    date: "7 Agustus 2026",
+    badge: "STABLE",
     title: "Penamaan File PDF RHK Otomatis, Stabilisasi Ekspor ZIP Hosting & Banner Support",
     description:
       "Pembaruan versi 2.6.1 yang menghadirkan penamaan otomatis file PDF hasil ekspor ZIP berdasarkan kombinasi No RHK Bulanan, No RHK Harian, dan nomor urut independen, peningkatan kestabilan ekspor ZIP pada hosting Vercel, serta penyempurnaan tampilan banner Support.",

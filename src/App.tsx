@@ -242,7 +242,7 @@ export default function App() {
 
   // Seed Data and Listen to Firestore Realtime Updates
   useEffect(() => {
-    document.title = "Laporan SKP v2.6.1";
+    document.title = "Laporan SKP v2.6.2";
     seedInitialFirestoreData();
 
     const unsubPetugas = onSnapshot(collection(db, "petugas"), (snap) => {
