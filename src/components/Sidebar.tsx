@@ -265,7 +265,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Perubahan Aplikasi</span>
           </div>
           <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[9px] font-mono font-bold rounded-md border border-amber-500/30">
-            v2.6.2
+            v2.6.3
           </span>
         </button>
 

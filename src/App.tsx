@@ -40,6 +40,7 @@ import { ChangelogView } from "./components/ChangelogView";
 import { InteractiveTutorialView } from "./components/InteractiveTutorialView";
 import { OnboardingTourModal } from "./components/OnboardingTourModal";
 import { SpreadsheetDbModal } from "./components/SpreadsheetDbModal";
+import { MaintenanceModal } from "./components/MaintenanceModal";
 
 import { CheckCircle2, AlertTriangle, Info, XCircle, X } from "lucide-react";
 
@@ -242,7 +243,7 @@ export default function App() {
 
   // Seed Data and Listen to Firestore Realtime Updates
   useEffect(() => {
-    document.title = "Laporan SKP v2.6.2";
+    document.title = "Laporan SKP v2.6.3";
     seedInitialFirestoreData();
 
     const unsubPetugas = onSnapshot(collection(db, "petugas"), (snap) => {
@@ -573,6 +574,11 @@ export default function App() {
   if (!currentUser) {
     return (
       <>
+        <MaintenanceModal
+          settings={appSettings?.maintenance_settings}
+          currentUser={currentUser}
+        />
+
         <LoginView
           onLoginSuccess={(petugas) => setCurrentUser(petugas)}
           petugasList={petugasList}
@@ -649,6 +655,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col font-sans antialiased text-slate-800 dark:text-slate-100 transition-colors">
+      {/* Maintenance Mode Overlay / Banner for User Level */}
+      <MaintenanceModal
+        settings={appSettings?.maintenance_settings}
+        currentUser={currentUser}
+      />
+
       {/* Top Navbar */}
       <Navbar
         currentUser={currentUser}

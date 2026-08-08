@@ -47,7 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               LAPORAN SKP ONLINE
             </h1>
             <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 rounded border border-amber-300/50 dark:border-amber-700/50 shrink-0">
-              v2.6.2
+              v2.6.3
             </span>
           </div>
           <p className="text-xs text-slate-700 dark:text-slate-300 font-semibold hidden md:block">

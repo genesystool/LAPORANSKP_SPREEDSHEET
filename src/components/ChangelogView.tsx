@@ -17,6 +17,7 @@ import {
   Globe,
   HardDrive,
   Cpu,
+  Wrench,
 } from "lucide-react";
 import { Petugas } from "../types";
 
@@ -41,9 +42,40 @@ export interface ReleaseVersion {
 
 export const APP_VERSIONS: ReleaseVersion[] = [
   {
+    version: "v2.6.3",
+    date: "8 Agustus 2026",
+    badge: "LATEST",
+    title: "Fitur Mode Perawatan Aplikasi (Maintenance Mode) & Opsi Akses User",
+    description:
+      "Pembaruan versi 2.6.3 menghadirkan fitur Mode Perawatan Aplikasi (Maintenance Mode) yang dikelola khusus oleh Admin. Dilengkapi opsi kontrol apakah modal/pop-up dapat ditutup oleh pengguna atau terkunci penuh selama pemeliharaan sistem.",
+    highlights: [
+      {
+        category: "FEATURE",
+        title: "Modul Mode Perawatan (Maintenance Mode) Khusus Admin",
+        description:
+          "Admin dapat mengaktifkan/menonaktifkan mode pemeliharaan secara realtime yang langsung berlaku di sisi pengguna ber-level USER tanpa mengganggu aktivitas Admin.",
+        icon: <Wrench className="w-4 h-4 text-amber-500" />,
+      },
+      {
+        category: "SECURITY",
+        title: "Fleksibilitas Opsi Penutupan Modal (Dapat Ditutup / Terkunci)",
+        description:
+          "Admin dapat mengatur modal perawatan apakah dapat ditutup pengguna ('Dapat Ditutup' dengan top warning banner) atau dikunci sepenuhnya ('Tidak Bisa Ditutup').",
+        icon: <Lock className="w-4 h-4 text-rose-500" />,
+      },
+      {
+        category: "ENHANCEMENT",
+        title: "Sinkronisasi Versi 2.6.3 & Notifikasi Realtime",
+        description:
+          "Pembaruan versi otomatis di seluruh komponen aplikasi serta pesan pemeliharaan tersimpan di Firestore untuk sinkronisasi seketika.",
+        icon: <Sparkles className="w-4 h-4 text-indigo-500" />,
+      },
+    ],
+  },
+  {
     version: "v2.6.2",
     date: "7 Agustus 2026",
-    badge: "LATEST",
+    badge: "STABLE",
     title: "Perbaikan Ekspor PDF ZIP, Restriksi Menu Database & Pembaharuan Versi Otomatis",
     description:
       "Pembaruan versi 2.6.2 dengan perbaikan mekanisme ekspor PDF ke ZIP tanpa merusak kerapian tata letak dokumen, pembatasan visibilitas menu Spreadsheet Database hanya untuk Admin, serta sistem auto-increment versi aplikasi pada setiap pembaruan.",

@@ -40,6 +40,7 @@ import {
   EyeOff,
   Plus,
   Globe,
+  Wrench,
 } from "lucide-react";
 
 const DEFAULT_COFFEE_PACKAGES: CoffeePackage[] = [
@@ -124,7 +125,7 @@ export const LisensiView: React.FC<LisensiViewProps> = ({
   const isAdmin = currentUser.level === "ADMIN";
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<"user" | "keygen" | "kop" | "fitur" | "versi" | "kopi">("user");
+  const [activeTab, setActiveTab] = useState<"user" | "keygen" | "kop" | "fitur" | "perawatan" | "versi" | "kopi">("user");
 
   const [showContactModal, setShowContactModal] = useState(false);
 
@@ -172,6 +173,25 @@ export const LisensiView: React.FC<LisensiViewProps> = ({
   );
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
 
+  // Maintenance Settings State (Admin)
+  const [maintEnabled, setMaintEnabled] = useState<boolean>(
+    !!appSettings.maintenance_settings?.enabled
+  );
+  const [maintAllowDismiss, setMaintAllowDismiss] = useState<boolean>(
+    appSettings.maintenance_settings?.allowDismiss !== false
+  );
+  const [maintTitle, setMaintTitle] = useState<string>(
+    appSettings.maintenance_settings?.title || "Sistem Dalam Perawatan"
+  );
+  const [maintMessage, setMaintMessage] = useState<string>(
+    appSettings.maintenance_settings?.message ||
+      "Aplikasi Laporan SKP Online saat ini sedang dalam proses pemeliharaan rutin dan peningkatan sistem server untuk menjaga stabilitas dan kecepatan data."
+  );
+  const [maintEstimated, setMaintEstimated] = useState<string>(
+    appSettings.maintenance_settings?.estimatedCompletion || ""
+  );
+  const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
+
   // Coffee Packages State (Admin Configurable & Show/Hide Toggle)
   const [showCoffeePackages, setShowCoffeePackages] = useState<boolean>(
     appSettings.show_coffee_packages !== false
@@ -205,6 +225,14 @@ export const LisensiView: React.FC<LisensiViewProps> = ({
         setDisableUserCopyTemplate(!!appSettings.feature_permissions.disableUserCopyTemplate);
       }
 
+      if (appSettings.maintenance_settings) {
+        setMaintEnabled(!!appSettings.maintenance_settings.enabled);
+        setMaintAllowDismiss(appSettings.maintenance_settings.allowDismiss !== false);
+        if (appSettings.maintenance_settings.title) setMaintTitle(appSettings.maintenance_settings.title);
+        if (appSettings.maintenance_settings.message) setMaintMessage(appSettings.maintenance_settings.message);
+        setMaintEstimated(appSettings.maintenance_settings.estimatedCompletion || "");
+      }
+
       if (appSettings.show_coffee_packages !== undefined) {
         setShowCoffeePackages(appSettings.show_coffee_packages);
       }
@@ -213,6 +241,38 @@ export const LisensiView: React.FC<LisensiViewProps> = ({
       }
     }
   }, [appSettings]);
+
+  // Save Maintenance Settings Handler
+  const handleSaveMaintenanceSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onSaveAppSettings) return;
+
+    setIsSavingMaintenance(true);
+    try {
+      const ok = await onSaveAppSettings({
+        maintenance_settings: {
+          enabled: maintEnabled,
+          allowDismiss: maintAllowDismiss,
+          title: maintTitle,
+          message: maintMessage,
+          estimatedCompletion: maintEstimated,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+      if (ok) {
+        addToast(
+          "success",
+          maintEnabled
+            ? "Mode Perawatan BERHASIL DIAKTIFKAN untuk seluruh User!"
+            : "Mode Perawatan BERHASIL DINONAKTIFKAN! Seluruh User dapat beraktivitas normal."
+        );
+      } else {
+        addToast("error", "Gagal menyimpan pengaturan mode perawatan!");
+      }
+    } finally {
+      setIsSavingMaintenance(false);
+    }
+  };
 
   // Generate Keygen Code for selected officer
   const handleGenerateKeygen = (petugasObj?: Petugas) => {
@@ -451,6 +511,17 @@ export const LisensiView: React.FC<LisensiViewProps> = ({
               }`}
             >
               <Sliders className="w-3.5 h-3.5 text-indigo-600" /> Kontrol Tombol User
+            </button>
+            <button
+              onClick={() => setActiveTab("perawatan")}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                activeTab === "perawatan" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5 text-amber-500" /> Mode Perawatan
+              {maintEnabled && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+              )}
             </button>
             <button
               onClick={() => setActiveTab("kopi")}
@@ -1451,6 +1522,266 @@ export const LisensiView: React.FC<LisensiViewProps> = ({
         </form>
       )}
 
+      {/* TAB 5: MODE PERAWATAN APLIKASI (MAINTENANCE MODE - ADMIN ONLY) */}
+      {activeTab === "perawatan" && isAdmin && (
+        <form
+          onSubmit={handleSaveMaintenanceSettings}
+          className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 space-y-6 animate-in fade-in"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-amber-500" />
+                <span>Pengaturan Mode Perawatan Aplikasi (Maintenance Mode)</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Atur status pemeliharaan sistem. Saat diaktifkan, pengguna ber-level <strong>USER</strong> akan melihat notifikasi / modal pemeliharaan.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSavingMaintenance}
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 shrink-0 disabled:opacity-50"
+            >
+              {isSavingMaintenance ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Simpan Pengaturan Perawatan</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Status Toggle Card */}
+          <div className="p-5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 dark:from-slate-800/80 dark:to-slate-800 rounded-2xl border border-amber-200/80 dark:border-amber-900/50 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    Status Mode Perawatan Sistem
+                  </h3>
+                  <span
+                    className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-full ${
+                      maintEnabled
+                        ? "bg-amber-500 text-slate-950 animate-pulse"
+                        : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    {maintEnabled ? "PERAWATAN AKTIF" : "NON-AKTIF (NORMAL)"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Apabila sakelar ini diaktifkan, seluruh pengguna level <strong>USER</strong> yang mengakses aplikasi secara real-time akan langsung menerima pemberitahuan mode perawatan.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setMaintEnabled(!maintEnabled)}
+                className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all shadow-xs shrink-0 ${
+                  maintEnabled
+                    ? "bg-amber-500 text-slate-950 hover:bg-amber-600"
+                    : "bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200"
+                }`}
+              >
+                {maintEnabled ? (
+                  <>
+                    <ToggleRight className="w-6 h-6 text-slate-950" />
+                    <span>PERAWATAN SEDANG AKTIF</span>
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="w-6 h-6 text-slate-400" />
+                    <span>AKTIFKAN MODE PERAWATAN</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Setting Modal Closure Policy */}
+          <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-4">
+            <div>
+              <h3 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Opsi Penutupan Pop-Up / Modal Perawatan oleh User</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Tentukan apakah pengguna dapat menutup modal pemberitahuan perawatan atau terhalang sepenuhnya.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Option 1: Bisa Ditutup */}
+              <div
+                onClick={() => setMaintAllowDismiss(true)}
+                className={`cursor-pointer p-4 rounded-xl border transition-all flex items-start gap-3.5 ${
+                  maintAllowDismiss
+                    ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-500 text-emerald-900 dark:text-emerald-100 ring-2 ring-emerald-500/20"
+                    : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300"
+                }`}
+              >
+                <div
+                  className={`p-2.5 rounded-xl shrink-0 ${
+                    maintAllowDismiss ? "bg-emerald-500 text-white shadow-xs" : "bg-slate-100 dark:bg-slate-700 text-slate-400"
+                  }`}
+                >
+                  <Unlock className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-extrabold">BISA DITUTUP USER (Dapat Dilanjutkan)</h4>
+                    <span
+                      className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                        maintAllowDismiss ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300 dark:border-slate-600"
+                      }`}
+                    >
+                      {maintAllowDismiss && <Check className="w-3 h-3" />}
+                    </span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed opacity-90">
+                    User dapat menekan tombol "Saya Mengerti, Tutup Pesan" untuk menyembunyikan modal dan tetap menggunakan fitur aplikasi. Banner peringatan tetap tampil melayang di atas layar.
+                  </p>
+                </div>
+              </div>
+
+              {/* Option 2: TIDAK BISA DITUTUP */}
+              <div
+                onClick={() => setMaintAllowDismiss(false)}
+                className={`cursor-pointer p-4 rounded-xl border transition-all flex items-start gap-3.5 ${
+                  !maintAllowDismiss
+                    ? "bg-red-50/80 dark:bg-red-950/40 border-red-500 text-red-900 dark:text-red-100 ring-2 ring-red-500/20"
+                    : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300"
+                }`}
+              >
+                <div
+                  className={`p-2.5 rounded-xl shrink-0 ${
+                    !maintAllowDismiss ? "bg-red-500 text-white shadow-xs" : "bg-slate-100 dark:bg-slate-700 text-slate-400"
+                  }`}
+                >
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-extrabold">TIDAK BISA DITUTUP (Terkunci Total)</h4>
+                    <span
+                      className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                        !maintAllowDismiss ? "border-red-600 bg-red-600 text-white" : "border-slate-300 dark:border-slate-600"
+                      }`}
+                    >
+                      {!maintAllowDismiss && <Check className="w-3 h-3" />}
+                    </span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed opacity-90">
+                    User TIDAK dapat menutup modal pemberitahuan. Seluruh layar terblokir oleh lapisan pemeliharaan sampai Admin mematikan Mode Perawatan.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Form Content Details */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+              <Edit3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Konten Teks Informasi Perawatan</span>
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Judul Pesan */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Judul Pesan Perawatan
+                </label>
+                <input
+                  type="text"
+                  value={maintTitle}
+                  onChange={(e) => setMaintTitle(e.target.value)}
+                  placeholder="Contoh: Sistem Dalam Pemeliharaan Berkala"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Estimasi Waktu Selesai */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Estimasi Waktu Selesai (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={maintEstimated}
+                  onChange={(e) => setMaintEstimated(e.target.value)}
+                  placeholder="Contoh: Hari ini, pukul 17:00 WIB"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Isi Pesan */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Deskripsi Lengkap Pesan Perawatan
+              </label>
+              <textarea
+                rows={3}
+                value={maintMessage}
+                onChange={(e) => setMaintMessage(e.target.value)}
+                placeholder="Tuliskan alasan atau instruksi lengkap untuk pengguna..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed"
+              />
+            </div>
+
+            {/* Presets */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-[11px] text-slate-500 font-medium">Template Cepat Teks:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMaintTitle("Pemeliharaan Server & Database");
+                  setMaintMessage(
+                    "Aplikasi Laporan SKP Online sedang menjalani pemeliharaan server berkala untuk optimalisasi penyimpanan dokumen dan kecepatan pengerjaan laporan."
+                  );
+                  setMaintEstimated("Estimasi selesai: Pukul 17:00 WIB");
+                }}
+                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[11px] font-medium transition-colors border border-slate-200 dark:border-slate-700"
+              >
+                🔧 Pemeliharaan Server &amp; DB
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMaintTitle("Pembaruan Sistem & Fitur Baru");
+                  setMaintMessage(
+                    "Sistem sedang menerapkan pembaruan fitur baru dan perbaikan performa laporan. Terima kasih atas kesabaran Anda."
+                  );
+                  setMaintEstimated("Estimasi selesai dalam 1 jam ke depan");
+                }}
+                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[11px] font-medium transition-colors border border-slate-200 dark:border-slate-700"
+              >
+                🚀 Pembaruan Fitur Baru
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <button
+              type="submit"
+              disabled={isSavingMaintenance}
+              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-2 shadow-md transition-colors disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {isSavingMaintenance ? "Menyimpan..." : "Simpan Pengaturan Mode Perawatan"}
+            </button>
+          </div>
+        </form>
+      )}
+
       {/* TAB 5: INFORMASI VERSI & SISTEM (ADMIN ONLY) */}
       {activeTab === "versi" && isAdmin && (
         <div className="space-y-6 animate-in fade-in">
@@ -1466,7 +1797,7 @@ export const LisensiView: React.FC<LisensiViewProps> = ({
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl font-extrabold text-white tracking-tight">Laporan SKP Online</h2>
                     <span className="px-2.5 py-0.5 bg-amber-400 text-slate-950 font-black rounded-full text-[10px] tracking-wide uppercase">
-                      v2.6.2
+                      v2.6.3
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 mt-0.5">
@@ -1505,7 +1836,7 @@ export const LisensiView: React.FC<LisensiViewProps> = ({
                 </li>
                 <li className="flex justify-between items-center py-1 border-b border-slate-50">
                   <span className="text-slate-500">Versi Rilis:</span>
-                  <span className="font-mono font-bold text-indigo-600">v2.6.2 (FireLink)</span>
+                  <span className="font-mono font-bold text-indigo-600">v2.6.3 (FireLink)</span>
                 </li>
                 <li className="flex justify-between items-center py-1 border-b border-slate-50">
                   <span className="text-slate-500">Frontend Stack:</span>

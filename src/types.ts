@@ -108,6 +108,15 @@ export interface CoffeePackage {
   contactUrl?: string;
 }
 
+export interface MaintenanceSettings {
+  enabled?: boolean;            // Status mode perawatan aktif atau tidak
+  allowDismiss?: boolean;       // Apakah popup modal dapat ditutup oleh user (true) atau tidak bisa (false)
+  title?: string;              // Judul pesan perawatan
+  message?: string;            // Pesan deskripsi perawatan
+  estimatedCompletion?: string;// Estimasi waktu selesai perawatan
+  updatedAt?: string;          // Waktu terakhir diubah oleh Admin
+}
+
 export interface AppSettings {
   id?: string;
   kop_surat_url?: string;
@@ -123,6 +132,7 @@ export interface AppSettings {
   feature_permissions?: FeaturePermissions;
   show_coffee_packages?: boolean;
   coffee_packages?: CoffeePackage[];
+  maintenance_settings?: MaintenanceSettings;
 }
 
 export interface ToastMessage {
