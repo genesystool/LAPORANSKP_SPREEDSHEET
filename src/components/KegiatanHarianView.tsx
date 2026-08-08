@@ -653,13 +653,36 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
           continue;
         }
 
-        // Wait for all images inside paper element to finish loading before html2canvas capture
+        // Wait for images inside paper element to finish loading & convert HTTP/HTTPS images to Base64 Data URLs
         const imgEls = Array.from(element.querySelectorAll("img"));
         if (imgEls.length > 0) {
           await Promise.all(
-            imgEls.map((img) => {
-              if (img.complete) return Promise.resolve();
-              return new Promise<void>((resolve) => {
+            imgEls.map(async (img) => {
+              if (img.complete) {
+                if (img.src && !img.src.startsWith("data:")) {
+                  try {
+                    const res = await fetch(img.src, { mode: "cors" });
+                    if (res.ok) {
+                      const b = await res.blob();
+                      const dUrl = await new Promise<string>((resolve) => {
+                        const r = new FileReader();
+                        r.onloadend = () => resolve((r.result as string) || "");
+                        r.onerror = () => resolve("");
+                        r.readAsDataURL(b);
+                      });
+                      if (dUrl && dUrl.startsWith("data:")) {
+                        img.src = dUrl;
+                        return;
+                      }
+                    }
+                  } catch {
+                    // CORS or fetch error
+                  }
+                }
+                return;
+              }
+
+              await new Promise<void>((resolve) => {
                 const done = () => resolve();
                 img.addEventListener("load", done, { once: true });
                 img.addEventListener("error", done, { once: true });
@@ -720,7 +743,7 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
           html2canvas: {
             scale: 2,
             useCORS: true,
-            allowTaint: false,
+            allowTaint: true,
             logging: false,
             backgroundColor: "#ffffff",
             windowWidth: 794,
@@ -742,13 +765,14 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
 
                 const wrapper = clonedDoc.getElementById("active-export-wrapper-container") || targetEl.parentElement;
                 if (wrapper) {
-                  wrapper.style.position = "static";
+                  wrapper.style.position = "relative";
                   wrapper.style.display = "block";
                   wrapper.style.visibility = "visible";
                   wrapper.style.opacity = "1";
                   wrapper.style.top = "0";
                   wrapper.style.left = "0";
                   wrapper.style.margin = "0 auto";
+                  wrapper.style.zIndex = "100";
                 }
               }
 
@@ -794,23 +818,57 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
           },
         };
 
+        let addedToZip = false;
         try {
-          const pdfBlob: Blob = await html2pdf().set(opt).from(element).output("blob");
-          if (pdfBlob && pdfBlob.size > 200) {
-            zip.file(fileName, pdfBlob);
-          } else {
-            console.warn(`PDF output is empty for ${fileName}`);
+          // Attempt 1: Direct jsPDF instance output as ArrayBuffer or Blob
+          let pdfData: ArrayBuffer | Blob | null = null;
+          try {
+            pdfData = await html2pdf()
+              .set(opt)
+              .from(element)
+              .toPdf()
+              .get("pdf")
+              .then((pdfObj: any) => pdfObj.output("arraybuffer"));
+          } catch {
+            pdfData = await html2pdf().set(opt).from(element).output("blob");
+          }
+
+          if (pdfData) {
+            const size = pdfData instanceof ArrayBuffer ? pdfData.byteLength : (pdfData as Blob).size;
+            if (size > 200) {
+              zip.file(fileName, pdfData);
+              addedToZip = true;
+            }
           }
         } catch (itemErr) {
           console.error(`Gagal membuat PDF untuk ${fileName}:`, itemErr);
+        }
+
+        if (!addedToZip) {
+          // Attempt 2: Fallback scale 1
           try {
             const fallbackOpt = {
               ...opt,
               html2canvas: { ...opt.html2canvas, scale: 1 },
             };
-            const pdfBlob: Blob = await html2pdf().set(fallbackOpt).from(element).output("blob");
-            if (pdfBlob && pdfBlob.size > 200) {
-              zip.file(fileName, pdfBlob);
+            let fallbackData: ArrayBuffer | Blob | null = null;
+            try {
+              fallbackData = await html2pdf()
+                .set(fallbackOpt)
+                .from(element)
+                .toPdf()
+                .get("pdf")
+                .then((pdfObj: any) => pdfObj.output("arraybuffer"));
+            } catch {
+              fallbackData = await html2pdf().set(fallbackOpt).from(element).output("blob");
+            }
+
+            if (fallbackData) {
+              const size = fallbackData instanceof ArrayBuffer ? fallbackData.byteLength : (fallbackData as Blob).size;
+              if (size > 200) {
+                zip.file(fileName, fallbackData);
+                addedToZip = true;
+              }
             }
           } catch (fallbackErr) {
             console.error(`Fallback PDF gagal untuk ${fileName}:`, fallbackErr);
