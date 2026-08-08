@@ -795,11 +795,9 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
         };
 
         try {
-          const worker = html2pdf().set(opt).from(element);
-          const pdfBlob: Blob = await worker.outputPdf("blob");
+          const pdfBlob: Blob = await html2pdf().set(opt).from(element).output("blob");
           if (pdfBlob && pdfBlob.size > 200) {
-            const pdfBuffer = await pdfBlob.arrayBuffer();
-            zip.file(fileName, pdfBuffer);
+            zip.file(fileName, pdfBlob);
           } else {
             console.warn(`PDF output is empty for ${fileName}`);
           }
@@ -810,11 +808,9 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
               ...opt,
               html2canvas: { ...opt.html2canvas, scale: 1 },
             };
-            const worker = html2pdf().set(fallbackOpt).from(element);
-            const pdfBlob: Blob = await worker.outputPdf("blob");
+            const pdfBlob: Blob = await html2pdf().set(fallbackOpt).from(element).output("blob");
             if (pdfBlob && pdfBlob.size > 200) {
-              const pdfBuffer = await pdfBlob.arrayBuffer();
-              zip.file(fileName, pdfBuffer);
+              zip.file(fileName, pdfBlob);
             }
           } catch (fallbackErr) {
             console.error(`Fallback PDF gagal untuk ${fileName}:`, fallbackErr);
@@ -2096,12 +2092,12 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
             id="active-export-wrapper-container"
             style={{
               position: "fixed",
-              top: "-10000px",
-              left: "-10000px",
+              top: "0px",
+              left: "0px",
               width: "210mm",
               opacity: 1,
               visibility: "visible",
-              zIndex: -1,
+              zIndex: -9999,
               backgroundColor: "#ffffff",
               color: "#0f172a",
               pointerEvents: "none",
