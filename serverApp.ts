@@ -92,11 +92,46 @@ app.post("/api/upload-drive-webhook", async (req, res) => {
   }
 });
 
-// In-memory / File-backed server storage for Google Sheets Database
-let serverSheetsDatabase: any = null;
+import fs from "fs";
+import path from "path";
 
-// API Google Sheets Database Sync
+// File-backed persistent storage for Google Sheets Database
+const DATA_DIR = path.join(process.cwd(), "data");
+const DB_FILE = path.join(DATA_DIR, "sheets_database.json");
+
+function loadServerDatabase(): any {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error("Gagal membaca database dari disk:", err);
+  }
+  return null;
+}
+
+function saveServerDatabase(data: any) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Gagal menyimpan database ke disk:", err);
+  }
+}
+
+let serverSheetsDatabase: any = loadServerDatabase();
+
+// API Google Sheets Database Sync & Query
 app.get("/api/sheets-db", (req, res) => {
+  if (!serverSheetsDatabase) {
+    serverSheetsDatabase = loadServerDatabase();
+  }
   res.json({
     status: "ok",
     database: "Google Spreadsheet DB",
@@ -108,9 +143,45 @@ app.post("/api/sheets-db/sync", (req, res) => {
   try {
     const payload = req.body;
     if (payload && typeof payload === "object") {
-      serverSheetsDatabase = payload;
+      if (!serverSheetsDatabase) {
+        serverSheetsDatabase = payload;
+      } else {
+        // Multi-device intelligent merge
+        const cols = [
+          "petugas",
+          "rencana_bulanan",
+          "rencana_harian",
+          "kegiatan_harian",
+          "laporan",
+          "lisensi",
+          "modul_p2k2",
+        ];
+        cols.forEach((col) => {
+          const existingList: any[] = serverSheetsDatabase[col] || [];
+          const incomingList: any[] = payload[col] || [];
+          const map = new Map<string, any>();
+          existingList.forEach((item) => {
+            if (item && item.id) map.set(item.id, item);
+          });
+          incomingList.forEach((item) => {
+            if (item && item.id) map.set(item.id, item);
+          });
+          serverSheetsDatabase[col] = Array.from(map.values());
+        });
+
+        serverSheetsDatabase.app_settings = {
+          ...(serverSheetsDatabase.app_settings || {}),
+          ...(payload.app_settings || {}),
+        };
+      }
+
+      saveServerDatabase(serverSheetsDatabase);
     }
-    return res.json({ status: "success", syncedAt: new Date().toISOString() });
+    return res.json({
+      status: "success",
+      syncedAt: new Date().toISOString(),
+      data: serverSheetsDatabase,
+    });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || "Failed to sync Google Sheets DB" });
   }

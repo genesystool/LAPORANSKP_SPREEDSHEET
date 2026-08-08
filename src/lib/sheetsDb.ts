@@ -32,9 +32,14 @@ class GoogleSheetsDatabase {
   private listeners: Map<CollectionName, Set<ListenerCallback>> = new Map();
   private docListeners: Map<string, Set<DocListenerCallback>> = new Map();
   private syncTimeout: any = null;
+  private isFetchingRemote: boolean = false;
+  private lastSyncedAt: string = "";
 
   constructor() {
     this.data = this.loadFromStorage();
+    if (typeof window !== "undefined") {
+      this.initRemoteSync();
+    }
   }
 
   private loadFromStorage(): DatabaseSchema {
@@ -72,14 +77,173 @@ class GoogleSheetsDatabase {
     return defaultData;
   }
 
-  private saveToStorage() {
+  private saveToStorage(triggerSync: boolean = true) {
     if (typeof window === "undefined") return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
     } catch (e) {
       console.error("Gagal menyimpan Google Sheets database ke storage:", e);
     }
-    this.scheduleRemoteSync();
+    if (triggerSync) {
+      this.scheduleRemoteSync();
+    }
+  }
+
+  private initRemoteSync() {
+    // Initial fetch from server cloud database
+    this.fetchAndMergeRemote();
+
+    // Poll every 3 seconds for active multi-device updates
+    setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        this.fetchAndMergeRemote();
+      }
+    }, 3000);
+
+    // Sync on window focus and reconnection
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", () => this.fetchAndMergeRemote());
+      window.addEventListener("online", () => this.fetchAndMergeRemote());
+    }
+  }
+
+  public async fetchAndMergeRemote(): Promise<boolean> {
+    if (this.isFetchingRemote) return false;
+    this.isFetchingRemote = true;
+
+    try {
+      const res = await fetch("/api/sheets-db", { cache: "no-store" });
+      if (!res.ok) return false;
+      const json = await res.json();
+      if (json && json.status === "ok" && json.data && typeof json.data === "object") {
+        const remoteData: Partial<DatabaseSchema> = json.data;
+        const { changedLocally, localHasNewItems } = this.mergeDatabaseWithRemote(remoteData);
+
+        this.lastSyncedAt = new Date().toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+
+        if (changedLocally) {
+          this.saveToStorage(false);
+          this.notifyAllListeners();
+        }
+
+        if (localHasNewItems) {
+          this.scheduleRemoteSync();
+        }
+
+        return true;
+      }
+    } catch (err) {
+      // Offline or network error
+    } finally {
+      this.isFetchingRemote = false;
+    }
+    return false;
+  }
+
+  private mergeDatabaseWithRemote(remoteData: Partial<DatabaseSchema>): {
+    changedLocally: boolean;
+    localHasNewItems: boolean;
+  } {
+    let changedLocally = false;
+    let localHasNewItems = false;
+
+    const arrayCollections: (keyof Omit<DatabaseSchema, "app_settings">)[] = [
+      "petugas",
+      "rencana_bulanan",
+      "rencana_harian",
+      "kegiatan_harian",
+      "laporan",
+      "lisensi",
+      "modul_p2k2",
+    ];
+
+    arrayCollections.forEach((col) => {
+      const localList = (this.data[col] || []) as any[];
+      const remoteList = (remoteData[col] || []) as any[];
+
+      const localMap = new Map<string, any>();
+      localList.forEach((item) => {
+        if (item && item.id) localMap.set(item.id, item);
+      });
+
+      const remoteMap = new Map<string, any>();
+      remoteList.forEach((item) => {
+        if (item && item.id) remoteMap.set(item.id, item);
+      });
+
+      let collectionModified = false;
+
+      // 1. Items in remote
+      remoteMap.forEach((remoteItem, id) => {
+        const localItem = localMap.get(id);
+        if (!localItem) {
+          // Remote has item missing locally
+          localMap.set(id, remoteItem);
+          collectionModified = true;
+        } else {
+          // Compare JSON strings
+          if (JSON.stringify(localItem) !== JSON.stringify(remoteItem)) {
+            localMap.set(id, remoteItem);
+            collectionModified = true;
+          }
+        }
+      });
+
+      // 2. Check if local has items missing in remote
+      localList.forEach((localItem) => {
+        if (localItem && localItem.id && !remoteMap.has(localItem.id)) {
+          localHasNewItems = true;
+        }
+      });
+
+      if (collectionModified) {
+        this.data[col] = Array.from(localMap.values()) as any;
+        changedLocally = true;
+      }
+    });
+
+    // Merge app_settings
+    if (remoteData.app_settings && typeof remoteData.app_settings === "object") {
+      const remoteSettings = remoteData.app_settings;
+      const currentSettings = this.data.app_settings || {};
+      if (JSON.stringify(currentSettings) !== JSON.stringify({ ...remoteSettings, ...currentSettings })) {
+        this.data.app_settings = { ...remoteSettings, ...currentSettings };
+        changedLocally = true;
+      }
+    }
+
+    return { changedLocally, localHasNewItems };
+  }
+
+  public getLastSyncedAt(): string {
+    return this.lastSyncedAt || "Terhubung Realtime";
+  }
+
+  public async forceSync(): Promise<boolean> {
+    await this.scheduleRemoteSyncNow();
+    return await this.fetchAndMergeRemote();
+  }
+
+  private async scheduleRemoteSyncNow() {
+    try {
+      await fetch("/api/sheets-db/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.data),
+      });
+    } catch {
+      // Ignore
+    }
+  }
+
+  private notifyAllListeners() {
+    (Object.keys(this.data) as CollectionName[]).forEach((col) => {
+      this.notifyListeners(col);
+    });
   }
 
   private notifyListeners(col: CollectionName) {
@@ -240,9 +404,7 @@ class GoogleSheetsDatabase {
       app_settings: newData.app_settings || {},
     };
     this.saveToStorage();
-    (Object.keys(this.data) as CollectionName[]).forEach((col) => {
-      this.notifyListeners(col);
-    });
+    this.notifyAllListeners();
   }
 
   // Schedule remote sync with server / Google Sheets API if configured
@@ -260,7 +422,7 @@ class GoogleSheetsDatabase {
       } catch {
         // Ignore
       }
-    }, 1500);
+    }, 1000);
   }
 }
 

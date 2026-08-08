@@ -24,8 +24,16 @@ export const SpreadsheetDbModal: React.FC<SpreadsheetDbModalProps> = ({ isOpen, 
   const [activeTab, setActiveTab] = useState<SheetTab>("kegiatan_harian");
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleForceSync = async () => {
+    setIsSyncing(true);
+    await sheetsDbInstance.forceSync();
+    setRefreshKey((prev) => prev + 1);
+    setIsSyncing(false);
+  };
 
   const fullDb = sheetsDbInstance.getFullDatabase();
   const rawDocs = sheetsDbInstance.getCollectionDocs(activeTab);
@@ -157,11 +165,12 @@ export const SpreadsheetDbModal: React.FC<SpreadsheetDbModalProps> = ({ isOpen, 
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <button
-              onClick={() => setRefreshKey((prev) => prev + 1)}
-              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              onClick={handleForceSync}
+              disabled={isSyncing}
+              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Refresh
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-emerald-500" : ""}`} />
+              {isSyncing ? "Sinkronisasi Cloud..." : "Sinkronkan & Refresh"}
             </button>
             <button
               onClick={handleExportCSV}
