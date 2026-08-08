@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import html2pdf from "html2pdf.js";
 import JSZip from "jszip";
+import { saveAs } from "file-saver";
 import { RichTextEditor } from "./RichTextEditor";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import {
@@ -845,12 +846,24 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
 
         let addedToZip = false;
         try {
-          const pdfBlob: Blob = await html2pdf().set(opt).from(element).output("blob");
-          if (pdfBlob && pdfBlob.size > 200) {
-            zip.file(fileName, pdfBlob);
-            addedToZip = true;
-          } else {
-            console.warn(`PDF output size too small for ${fileName}: ${pdfBlob?.size}`);
+          let pdfData: ArrayBuffer | Blob | null = null;
+          try {
+            pdfData = await html2pdf()
+              .set(opt)
+              .from(element)
+              .toPdf()
+              .get("pdf")
+              .then((pdfObj: any) => pdfObj.output("arraybuffer"));
+          } catch {
+            pdfData = await html2pdf().set(opt).from(element).output("blob");
+          }
+
+          if (pdfData) {
+            const size = pdfData instanceof ArrayBuffer ? pdfData.byteLength : (pdfData as Blob).size;
+            if (size > 200) {
+              zip.file(fileName, pdfData);
+              addedToZip = true;
+            }
           }
         } catch (itemErr) {
           console.error(`Gagal membuat PDF untuk ${fileName}:`, itemErr);
@@ -863,10 +876,24 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
               ...opt,
               html2canvas: { ...opt.html2canvas, scale: 1 },
             };
-            const pdfBlob: Blob = await html2pdf().set(fallbackOpt).from(element).output("blob");
-            if (pdfBlob && pdfBlob.size > 200) {
-              zip.file(fileName, pdfBlob);
-              addedToZip = true;
+            let fallbackData: ArrayBuffer | Blob | null = null;
+            try {
+              fallbackData = await html2pdf()
+                .set(fallbackOpt)
+                .from(element)
+                .toPdf()
+                .get("pdf")
+                .then((pdfObj: any) => pdfObj.output("arraybuffer"));
+            } catch {
+              fallbackData = await html2pdf().set(fallbackOpt).from(element).output("blob");
+            }
+
+            if (fallbackData) {
+              const size = fallbackData instanceof ArrayBuffer ? fallbackData.byteLength : (fallbackData as Blob).size;
+              if (size > 200) {
+                zip.file(fileName, fallbackData);
+                addedToZip = true;
+              }
             }
           } catch (fallbackErr) {
             console.error(`Fallback PDF gagal untuk ${fileName}:`, fallbackErr);
@@ -909,20 +936,24 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
 
       const zipFileName = `Rekap_Laporan_Kegiatan_${currentUser.nip || "ASN"}_${new Date().toISOString().split("T")[0]}.zip`;
 
-      const blobUrl = URL.createObjectURL(zipBlob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = zipFileName;
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
+      try {
+        saveAs(zipBlob, zipFileName);
+      } catch {
+        const blobUrl = URL.createObjectURL(zipBlob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = zipFileName;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
 
-      setTimeout(() => {
-        if (document.body.contains(link)) {
-          document.body.removeChild(link);
-        }
-        URL.revokeObjectURL(blobUrl);
-      }, 20000);
+        setTimeout(() => {
+          if (document.body.contains(link)) {
+            document.body.removeChild(link);
+          }
+          URL.revokeObjectURL(blobUrl);
+        }, 20000);
+      }
 
       addToast(
         "success",
@@ -2149,11 +2180,11 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
             style={{
               position: "fixed",
               top: "0px",
-              left: "0px",
+              left: "-10000px",
               width: "210mm",
               opacity: 1,
               visibility: "visible",
-              zIndex: -9999,
+              zIndex: 99999,
               backgroundColor: "#ffffff",
               color: "#0f172a",
               pointerEvents: "none",

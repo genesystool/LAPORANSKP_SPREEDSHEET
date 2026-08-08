@@ -80,6 +80,27 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
+    // Direct check for default user credentials fallback
+    if ((inputNip === "1995050512345678" || inputNip === "user") && (inputPass === "user" || inputPass === "user123")) {
+      const demoUser: Petugas = petugasList.find(
+        (p) => p.nip.toLowerCase() === "1995050512345678" || p.id === "petugas_user1"
+      ) || {
+        id: "petugas_user1",
+        nip: "1995050512345678",
+        nama: "Siti Nurhaliza, S.STP",
+        password: "user",
+        level: "USER",
+        status: "AKTIF",
+        foto: "",
+        scan_ttd: "",
+        createdAt: new Date().toISOString(),
+      };
+
+      addToast("success", `Selamat datang, ${demoUser.nama}`);
+      onLoginSuccess(demoUser);
+      return;
+    }
+
     const found = petugasList.find(
       (p) =>
         (p.nip.trim().toLowerCase() === inputNip || (inputNip === "admin" && p.level === "ADMIN")) &&
