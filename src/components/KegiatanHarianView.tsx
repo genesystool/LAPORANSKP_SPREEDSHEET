@@ -756,6 +756,149 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
         }
         usedFileNames.add(fileName);
 
+        const stripAllAtRulesAndModernCss = (css: string): string => {
+          if (!css) return "";
+
+          // 1. Remove comments
+          let clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+          // 2. Remove single-line at-rules like @import "...", @layer theme, base;
+          clean = clean.replace(/@[a-z0-9_-]+[^;{]*;/gi, "");
+
+          // 3. Remove block at-rules like @theme { ... }, @layer { ... }, @supports { ... }, @media { ... }, @keyframes { ... }, @container { ... }, @property { ... }, @utility { ... }
+          let result = "";
+          let i = 0;
+          while (i < clean.length) {
+            if (clean[i] === "@") {
+              let j = i + 1;
+              while (j < clean.length && clean[j] !== "{" && clean[j] !== ";") {
+                j++;
+              }
+              if (j < clean.length && clean[j] === ";") {
+                i = j + 1;
+                continue;
+              } else if (j < clean.length && clean[j] === "{") {
+                let depth = 1;
+                let k = j + 1;
+                while (k < clean.length && depth > 0) {
+                  if (clean[k] === "{") depth++;
+                  else if (clean[k] === "}") depth--;
+                  k++;
+                }
+                i = k;
+                continue;
+              }
+            }
+            result += clean[i];
+            i++;
+          }
+
+          // 4. Remove any remaining oklch, color-mix, lab, lch, light-dark
+          result = result.replace(/(--tw-[a-z0-9-]*:\s*)[^;]*(?:oklch|color-mix|lab|lch|light-dark)\([^)]+\)/gi, "$1rgba(0,0,0,0)");
+          result = result.replace(/oklch\(([^)]+)\)/gi, "rgba(15, 23, 42, 0.8)");
+          result = result.replace(/color-mix\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
+          result = result.replace(/lab\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
+          result = result.replace(/lch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
+          result = result.replace(/light-dark\([^)]+\)/gi, "#0f172a");
+
+          return result;
+        };
+
+        const sanitizeClonedDoc = (clonedDoc: Document) => {
+          clonedDoc.documentElement.classList.remove("dark");
+          clonedDoc.body.classList.remove("dark");
+          clonedDoc.documentElement.style.backgroundColor = "#ffffff";
+          clonedDoc.documentElement.style.color = "#0f172a";
+          clonedDoc.body.style.backgroundColor = "#ffffff";
+          clonedDoc.body.style.color = "#0f172a";
+          clonedDoc.body.style.margin = "0";
+          clonedDoc.body.style.padding = "0";
+
+          const targetEl = clonedDoc.getElementById("active-single-export-paper");
+          if (targetEl) {
+            // Isolate targetEl completely in clonedDoc body at top-left 0,0
+            clonedDoc.body.innerHTML = "";
+
+            const container = clonedDoc.createElement("div");
+            container.style.position = "absolute";
+            container.style.top = "0";
+            container.style.left = "0";
+            container.style.width = "210mm";
+            container.style.backgroundColor = "#ffffff";
+            container.style.color = "#0f172a";
+
+            targetEl.style.display = "block";
+            targetEl.style.visibility = "visible";
+            targetEl.style.opacity = "1";
+            targetEl.style.position = "relative";
+            targetEl.style.margin = "0 auto";
+            targetEl.style.backgroundColor = "#ffffff";
+            targetEl.style.color = "#0f172a";
+
+            container.appendChild(targetEl);
+            clonedDoc.body.appendChild(container);
+          }
+
+          // Remove any external link stylesheets that could cause CORS/parsing issues
+          const links = Array.from(clonedDoc.querySelectorAll("link[rel='stylesheet']"));
+          links.forEach((link) => link.remove());
+
+          // Clean all <style> tags to strip modern CSS tokens & @at-rules that crash html2canvas parser
+          const styleTags = Array.from(clonedDoc.querySelectorAll("style"));
+          styleTags.forEach((styleTag) => {
+            if (styleTag.textContent) {
+              styleTag.textContent = stripAllAtRulesAndModernCss(styleTag.textContent);
+            }
+          });
+
+          // Clean all element inline styles & classes
+          const allEls = Array.from(clonedDoc.querySelectorAll("*"));
+          allEls.forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            if (htmlEl.classList) {
+              htmlEl.classList.remove(
+                "dark",
+                "shadow-2xl",
+                "shadow-xl",
+                "shadow-lg",
+                "shadow-md",
+                "shadow-sm",
+                "shadow"
+              );
+            }
+            if (htmlEl.style) {
+              htmlEl.style.boxShadow = "none";
+              const rawStyle = htmlEl.getAttribute("style");
+              if (rawStyle) {
+                const cleanStyle = rawStyle
+                  .replace(/oklch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)")
+                  .replace(/color-mix\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)")
+                  .replace(/lab\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)")
+                  .replace(/lch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)")
+                  .replace(/light-dark\([^)]+\)/gi, "#0f172a");
+                htmlEl.setAttribute("style", cleanStyle);
+              }
+            }
+          });
+
+          const images = Array.from(clonedDoc.querySelectorAll("img"));
+          images.forEach((img) => {
+            if (img.src && (img.src.startsWith("http://") || img.src.startsWith("https://"))) {
+              img.crossOrigin = "anonymous";
+            }
+            img.onerror = () => {
+              img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+            };
+          });
+
+          const avoidEls = clonedDoc.querySelectorAll(".signature-box, .photo-item, .prevent-break");
+          avoidEls.forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            htmlEl.style.breakInside = "avoid";
+            htmlEl.style.pageBreakInside = "avoid";
+          });
+        };
+
         const opt = {
           margin: [10, 10, 10, 10] as [number, number, number, number],
           filename: fileName,
@@ -770,70 +913,7 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
             scrollX: 0,
             scrollY: 0,
             onclone: (clonedDoc: Document) => {
-              clonedDoc.documentElement.classList.remove("dark");
-              clonedDoc.body.classList.remove("dark");
-              clonedDoc.documentElement.style.backgroundColor = "#ffffff";
-              clonedDoc.body.style.backgroundColor = "#ffffff";
-              clonedDoc.body.style.margin = "0";
-              clonedDoc.body.style.padding = "0";
-
-              const targetEl = clonedDoc.getElementById("active-single-export-paper");
-              if (targetEl) {
-                // Isolate targetEl completely in clonedDoc body at top-left 0,0
-                clonedDoc.body.innerHTML = "";
-
-                const container = clonedDoc.createElement("div");
-                container.style.position = "absolute";
-                container.style.top = "0";
-                container.style.left = "0";
-                container.style.width = "210mm";
-                container.style.backgroundColor = "#ffffff";
-                container.style.color = "#0f172a";
-
-                targetEl.style.display = "block";
-                targetEl.style.visibility = "visible";
-                targetEl.style.opacity = "1";
-                targetEl.style.position = "relative";
-                targetEl.style.margin = "0 auto";
-                targetEl.style.backgroundColor = "#ffffff";
-                targetEl.style.color = "#0f172a";
-
-                container.appendChild(targetEl);
-                clonedDoc.body.appendChild(container);
-              }
-
-              const images = Array.from(clonedDoc.querySelectorAll("img"));
-              images.forEach((img) => {
-                if (img.src && (img.src.startsWith("http://") || img.src.startsWith("https://"))) {
-                  img.crossOrigin = "anonymous";
-                }
-                img.onerror = () => {
-                  img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-                };
-              });
-
-              // Clean oklch colors from style tags & inline styles to prevent html2canvas color parsing crashes
-              const styleTags = Array.from(clonedDoc.querySelectorAll("style"));
-              styleTags.forEach((styleTag) => {
-                if (styleTag.textContent && styleTag.textContent.includes("oklch")) {
-                  styleTag.textContent = styleTag.textContent.replace(/oklch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
-                }
-              });
-
-              const allEls = Array.from(clonedDoc.querySelectorAll("*"));
-              allEls.forEach((el) => {
-                const htmlEl = el as HTMLElement;
-                if (htmlEl.style && htmlEl.style.cssText && htmlEl.style.cssText.includes("oklch")) {
-                  htmlEl.style.cssText = htmlEl.style.cssText.replace(/oklch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
-                }
-              });
-
-              const avoidEls = clonedDoc.querySelectorAll(".signature-box, .photo-item, .prevent-break");
-              avoidEls.forEach((el) => {
-                const htmlEl = el as HTMLElement;
-                htmlEl.style.breakInside = "avoid";
-                htmlEl.style.pageBreakInside = "avoid";
-              });
+              sanitizeClonedDoc(clonedDoc);
             },
           },
           jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
@@ -897,6 +977,136 @@ export const KegiatanHarianView: React.FC<KegiatanHarianViewProps> = ({
             }
           } catch (fallbackErr) {
             console.error(`Fallback PDF gagal untuk ${fileName}:`, fallbackErr);
+          }
+        }
+
+        if (!addedToZip) {
+          // Attempt 3: Direct html2canvas snapshot to html2pdf blob wrapper
+          try {
+            const html2canvas = (await import("html2canvas")).default;
+            const canvas = await html2canvas(element, {
+              scale: 1.5,
+              useCORS: true,
+              allowTaint: false,
+              logging: false,
+              backgroundColor: "#ffffff",
+              onclone: (clonedDoc: Document) => {
+                sanitizeClonedDoc(clonedDoc);
+              },
+            });
+
+            if (canvas) {
+              const imgData = canvas.toDataURL("image/jpeg", 0.95);
+              const tempWrapper = document.createElement("div");
+              const img = document.createElement("img");
+              img.src = imgData;
+              img.style.width = "100%";
+              tempWrapper.appendChild(img);
+              document.body.appendChild(tempWrapper);
+
+              const canvasPdf = await html2pdf()
+                .set({
+                  margin: [10, 10, 10, 10],
+                  filename: fileName,
+                  image: { type: "jpeg", quality: 0.95 },
+                  html2canvas: { scale: 1, logging: false },
+                  jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+                })
+                .from(tempWrapper)
+                .output("blob");
+
+              document.body.removeChild(tempWrapper);
+
+              if (canvasPdf && canvasPdf.size > 200) {
+                zip.file(fileName, canvasPdf);
+                addedToZip = true;
+              }
+            }
+          } catch (cErr) {
+            console.error(`Attempt 3 html2canvas failed for ${fileName}:`, cErr);
+          }
+        }
+
+        if (!addedToZip) {
+          // Attempt 4: Emergency fallback - strip all style/link tags completely and inject clean print CSS
+          try {
+            const html2canvas = (await import("html2canvas")).default;
+            const canvas = await html2canvas(element, {
+              scale: 1.5,
+              useCORS: true,
+              allowTaint: false,
+              logging: false,
+              backgroundColor: "#ffffff",
+              onclone: (clonedDoc: Document) => {
+                // Remove ALL styles & links to guarantee zero CSS parser errors
+                const allStyles = Array.from(clonedDoc.querySelectorAll("style, link[rel='stylesheet']"));
+                allStyles.forEach((s) => s.remove());
+
+                const cleanStyle = clonedDoc.createElement("style");
+                cleanStyle.textContent = `
+                  * { box-sizing: border-box; }
+                  body, html { background: #ffffff !important; color: #0f172a !important; margin: 0; padding: 0; font-family: sans-serif; }
+                  table { border-collapse: collapse; width: 100%; margin-bottom: 8px; }
+                  th, td { border: 1px solid #94a3b8; padding: 4px 6px; font-size: 11px; text-align: left; vertical-align: top; }
+                  th { background-color: #f1f5f9; font-weight: bold; }
+                  img { max-width: 100%; height: auto; }
+                  .flex { display: flex; }
+                  .flex-col { flex-direction: column; }
+                  .items-center { align-items: center; }
+                  .justify-between { justify-content: space-between; }
+                  .grid { display: grid; }
+                  .text-center { text-align: center; }
+                  .text-right { text-align: right; }
+                  .font-bold { font-weight: bold; }
+                  .text-xs { font-size: 10px; }
+                  .text-sm { font-size: 12px; }
+                  .p-2 { padding: 8px; }
+                  .p-4 { padding: 16px; }
+                  .border { border: 1px solid #cbd5e1; }
+                `;
+                clonedDoc.head.appendChild(cleanStyle);
+
+                const targetEl = clonedDoc.getElementById("active-single-export-paper");
+                if (targetEl) {
+                  clonedDoc.body.innerHTML = "";
+                  targetEl.style.display = "block";
+                  targetEl.style.visibility = "visible";
+                  targetEl.style.backgroundColor = "#ffffff";
+                  targetEl.style.color = "#0f172a";
+                  clonedDoc.body.appendChild(targetEl);
+                }
+              },
+            });
+
+            if (canvas) {
+              const imgData = canvas.toDataURL("image/jpeg", 0.95);
+              const tempWrapper = document.createElement("div");
+              const img = document.createElement("img");
+              img.src = imgData;
+              img.style.width = "100%";
+              tempWrapper.appendChild(img);
+              document.body.appendChild(tempWrapper);
+
+              const emergencyPdf = await html2pdf()
+                .set({
+                  margin: [10, 10, 10, 10],
+                  filename: fileName,
+                  image: { type: "jpeg", quality: 0.95 },
+                  html2canvas: { scale: 1, logging: false },
+                  jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+                })
+                .from(tempWrapper)
+                .output("blob");
+
+              document.body.removeChild(tempWrapper);
+
+              if (emergencyPdf && emergencyPdf.size > 200) {
+                zip.file(fileName, emergencyPdf);
+                addedToZip = true;
+              }
+            }
+          } catch (emErr) {
+            console.error(`Attempt 4 emergency fallback failed for ${fileName}:`, emErr);
           }
         }
 

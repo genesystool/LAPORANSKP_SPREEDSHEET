@@ -331,41 +331,63 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
     clonedDoc.body.style.margin = "0";
     clonedDoc.body.style.padding = "0";
 
-    // 1. Convert/Remove oklch color functions in all <style> tags to prevent html2canvas parser crash
+    const stripAllAtRulesAndModernCss = (css: string): string => {
+      if (!css) return "";
+
+      // 1. Remove comments
+      let clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+      // 2. Remove single-line at-rules like @import "...", @layer theme, base;
+      clean = clean.replace(/@[a-z0-9_-]+[^;{]*;/gi, "");
+
+      // 3. Remove block at-rules like @theme { ... }, @layer { ... }, @supports { ... }, @media { ... }, @keyframes { ... }, @container { ... }, @property { ... }, @utility { ... }
+      let result = "";
+      let i = 0;
+      while (i < clean.length) {
+        if (clean[i] === "@") {
+          let j = i + 1;
+          while (j < clean.length && clean[j] !== "{" && clean[j] !== ";") {
+            j++;
+          }
+          if (j < clean.length && clean[j] === ";") {
+            i = j + 1;
+            continue;
+          } else if (j < clean.length && clean[j] === "{") {
+            let depth = 1;
+            let k = j + 1;
+            while (k < clean.length && depth > 0) {
+              if (clean[k] === "{") depth++;
+              else if (clean[k] === "}") depth--;
+              k++;
+            }
+            i = k;
+            continue;
+          }
+        }
+        result += clean[i];
+        i++;
+      }
+
+      // 4. Remove any remaining oklch, color-mix, lab, lch, light-dark
+      result = result.replace(/(--tw-[a-z0-9-]*:\s*)[^;]*(?:oklch|color-mix|lab|lch|light-dark)\([^)]+\)/gi, "$1rgba(0,0,0,0)");
+      result = result.replace(/oklch\(([^)]+)\)/gi, "rgba(15, 23, 42, 0.8)");
+      result = result.replace(/color-mix\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
+      result = result.replace(/lab\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
+      result = result.replace(/lch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)");
+      result = result.replace(/light-dark\([^)]+\)/gi, "#0f172a");
+
+      return result;
+    };
+
+    // Remove any external link stylesheets that could cause CORS/parsing issues
+    const links = Array.from(clonedDoc.querySelectorAll("link[rel='stylesheet']"));
+    links.forEach((link) => link.remove());
+
+    // 1. Convert/Remove modern CSS constructs & @at-rules in all <style> tags to prevent html2canvas parser crash
     const styleTags = Array.from(clonedDoc.querySelectorAll("style"));
     styleTags.forEach((styleTag) => {
-      if (styleTag.textContent && styleTag.textContent.includes("oklch")) {
-        let css = styleTag.textContent;
-        // Replace oklch in shadow / ring variables with transparent
-        css = css.replace(/(--tw-[a-z0-9-]*:\s*)[^;]*oklch\([^)]+\)/gi, "$1rgba(0,0,0,0)");
-        // Convert any remaining oklch(L C H / A) to valid rgb/rgba
-        css = css.replace(/oklch\(([^)]+)\)/gi, (match, inner) => {
-          try {
-            const parts = inner.trim().split(/[\s\/]+/).filter(Boolean);
-            if (parts.length >= 1) {
-              let lStr = parts[0];
-              let l = parseFloat(lStr);
-              if (lStr.endsWith("%")) l = l / 100;
-
-              let alpha = 1;
-              if (parts.length >= 4) {
-                let aStr = parts[3];
-                alpha = parseFloat(aStr);
-                if (aStr.endsWith("%")) alpha = alpha / 100;
-              }
-
-              const v = Math.min(255, Math.max(0, Math.round(l * 255)));
-              if (alpha < 1) {
-                return `rgba(${v}, ${v}, ${v}, ${alpha})`;
-              }
-              return `rgb(${v}, ${v}, ${v})`;
-            }
-          } catch {
-            // ignore
-          }
-          return "rgba(15, 23, 42, 0.8)";
-        });
-        styleTag.textContent = css;
+      if (styleTag.textContent) {
+        styleTag.textContent = stripAllAtRulesAndModernCss(styleTag.textContent);
       }
     });
 
@@ -388,8 +410,14 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
         htmlEl.style.boxShadow = "none";
       }
       const styleAttr = htmlEl.getAttribute("style");
-      if (styleAttr && styleAttr.includes("oklch")) {
-        htmlEl.setAttribute("style", styleAttr.replace(/oklch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)"));
+      if (styleAttr) {
+        const cleanStyle = styleAttr
+          .replace(/oklch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)")
+          .replace(/color-mix\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)")
+          .replace(/lab\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)")
+          .replace(/lch\([^)]+\)/gi, "rgba(15, 23, 42, 0.8)")
+          .replace(/light-dark\([^)]+\)/gi, "#0f172a");
+        htmlEl.setAttribute("style", cleanStyle);
       }
     });
 
